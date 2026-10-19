@@ -15909,6 +15909,12 @@
       "group_today": "Heute",
       "group_yesterday": "Gestern",
       "group_earlier": "Früher",
+      "group_by_label": "Sitzungen gruppieren nach",
+      "group_by_recency": "Aktualität",
+      "group_by_workspace": "Arbeitsbereich",
+      "group_by_project": "Projekt",
+      "group_no_workspace": "Kein Arbeitsbereich",
+      "group_no_project": "Kein Projekt",
       "empty_title": "Keine Sitzungen",
       "empty_subtitle": "Erstelle eine, um loszulegen."
     },

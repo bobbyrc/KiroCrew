@@ -15650,6 +15650,12 @@
       "group_today": "今日",
       "group_yesterday": "昨日",
       "group_earlier": "それ以前",
+      "group_by_label": "セッションのグループ化",
+      "group_by_recency": "最近",
+      "group_by_workspace": "ワークスペース",
+      "group_by_project": "プロジェクト",
+      "group_no_workspace": "ワークスペースなし",
+      "group_no_project": "プロジェクトなし",
       "empty_title": "セッションはありません",
       "empty_subtitle": "作成して始めましょう。"
     },

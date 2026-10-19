@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { Routes, Route, useSearchParams } from 'react-router-dom'
-import SessionsPage, { recencyGroup } from '../pages/SessionsPage'
+import SessionsPage, { recencyGroup, projectLabelFor, rowLocationLabel } from '../pages/SessionsPage'
 import { renderWithProviders, createTestStore } from './helpers'
 import type { ChatSlot, ChatTag } from '../types'
 
@@ -316,5 +316,161 @@ describe('SessionsPage', () => {
     // Recency alone would put s-a first; the manual order says s-b.
     expect(rows[0]).toHaveAttribute('data-testid', 'sessions-row-s-b')
     expect(rows[1]).toHaveAttribute('data-testid', 'sessions-row-s-a')
+  })
+})
+
+describe('projectLabelFor', () => {
+  it('uses the project directory basename', () => {
+    expect(projectLabelFor(slot('k', 't', NOW, { project: '/Users/me/code/KiroCrew' }))).toBe('KiroCrew')
+  })
+
+  it('ignores trailing separators', () => {
+    expect(projectLabelFor(slot('k', 't', NOW, { project: '/Users/me/code/KiroCrew/' }))).toBe('KiroCrew')
+  })
+
+  it('handles a Windows-shaped path', () => {
+    expect(projectLabelFor(slot('k', 't', NOW, { project: 'C:\\repos\\furnace' }))).toBe('furnace')
+  })
+
+  it('falls back to a linked repo when there is no project dir', () => {
+    expect(
+      projectLabelFor(
+        slot('k', 't', NOW, {
+          source_links: [{ provider: 'github', number: 1, url: 'u', repo: 'kirodotdev/KiroCrew' }],
+        } as Partial<ChatSlot>),
+      ),
+    ).toBe('kirodotdev/KiroCrew')
+  })
+
+  it('prefers the project dir over a linked repo', () => {
+    expect(
+      projectLabelFor(
+        slot('k', 't', NOW, {
+          project: '/w/alpha',
+          source_links: [{ provider: 'github', number: 1, url: 'u', repo: 'org/beta' }],
+        } as Partial<ChatSlot>),
+      ),
+    ).toBe('alpha')
+  })
+
+  it('returns empty when the session has neither', () => {
+    expect(projectLabelFor(slot('k', 't', NOW))).toBe('')
+  })
+})
+
+describe('SessionsPage grouping modes', () => {
+  it('defaults to Recency and switches to Workspace, folding on slot.workspace', async () => {
+    renderPage([
+      slot('s1', 'Default A', NOW - 60_000, { workspace: 'default' }),
+      slot('s2', 'Furnace A', NOW - 120_000, { workspace: 'furnace' }),
+      slot('s3', 'Default B', NOW - 180_000, { workspace: 'default' }),
+    ])
+    // Recency by default: a Today heading and no workspace SECTION headings.
+    // (A row's own location chip may still name a workspace — that is the chip,
+    // not a group heading, so assert on the section regions, not raw text.)
+    expect(await screen.findByText('Today')).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'furnace' })).toBeNull()
+
+    fireEvent.click(screen.getByTestId('sessions-groupby-workspace'))
+
+    const sections = await screen.findAllByRole('region')
+    // Busiest workspace first: default (2) before furnace (1).
+    expect(sections[0]).toHaveAccessibleName('default')
+    expect(sections[1]).toHaveAccessibleName('furnace')
+    expect(within(sections[0]).getAllByTestId(/sessions-row-/)).toHaveLength(2)
+    expect(within(sections[1]).getAllByTestId(/sessions-row-/)).toHaveLength(1)
+  })
+
+  it('groups by Project using the directory basename, sinking the no-project bucket last', async () => {
+    renderPage([
+      slot('s1', 'In KiroCrew', NOW - 60_000, { project: '/Users/me/code/KiroCrew' }),
+      slot('s2', 'No project', NOW - 120_000),
+      slot('s3', 'Also KiroCrew', NOW - 180_000, { project: '/Users/me/code/KiroCrew' }),
+    ])
+    fireEvent.click(await screen.findByTestId('sessions-groupby-project'))
+
+    const sections = await screen.findAllByRole('region')
+    expect(sections[0]).toHaveAccessibleName('KiroCrew')
+    // The unassigned bucket always sinks to the bottom, even if it tied on count.
+    expect(sections[sections.length - 1]).toHaveAccessibleName('No project')
+  })
+
+  it('keeps pinned sessions in a leading Pinned group in every mode', async () => {
+    renderPage([
+      slot('s-pin', 'Pinned', NOW - 60_000, { pinned: true, workspace: 'furnace' }),
+      slot('s-reg', 'Regular', NOW - 120_000, { workspace: 'default' }),
+    ])
+    fireEvent.click(await screen.findByTestId('sessions-groupby-workspace'))
+    const sections = await screen.findAllByRole('region')
+    expect(sections[0]).toHaveAccessibleName('Pinned')
+    // A pinned session is NOT also folded into its workspace bucket.
+    expect(screen.getAllByTestId('sessions-row-s-pin')).toHaveLength(1)
+  })
+
+  it('marks the active mode with aria-checked', async () => {
+    renderPage([slot('s1', 'A', NOW - 60_000)])
+    const recency = await screen.findByTestId('sessions-groupby-recency')
+    const workspace = screen.getByTestId('sessions-groupby-workspace')
+    expect(recency).toHaveAttribute('aria-checked', 'true')
+    expect(workspace).toHaveAttribute('aria-checked', 'false')
+    fireEvent.click(workspace)
+    expect(recency).toHaveAttribute('aria-checked', 'false')
+    expect(workspace).toHaveAttribute('aria-checked', 'true')
+  })
+})
+
+describe('rowLocationLabel', () => {
+  it('shows the project label when present', () => {
+    expect(rowLocationLabel(slot('k', 't', NOW, { project: '/w/KiroCrew', workspace: 'default' }))).toBe('KiroCrew')
+  })
+
+  it('falls back to a non-default workspace when there is no project', () => {
+    expect(rowLocationLabel(slot('k', 't', NOW, { workspace: 'furnace' }))).toBe('furnace')
+  })
+
+  it('omits the default workspace (nothing worth showing)', () => {
+    expect(rowLocationLabel(slot('k', 't', NOW, { workspace: 'default' }))).toBe('')
+  })
+
+  it('returns empty when the session has no project and no workspace', () => {
+    expect(rowLocationLabel(slot('k', 't', NOW))).toBe('')
+  })
+})
+
+describe('SessionsPage row location chip', () => {
+  it('renders a location chip on rows that have one, and omits it otherwise', async () => {
+    renderPage([
+      slot('s1', 'With project', NOW - 60_000, { project: '/Users/me/code/KiroCrew' }),
+      slot('s2', 'Default workspace, no project', NOW - 120_000, { workspace: 'default' }),
+    ])
+    const chip = await screen.findByTestId('sessions-location-s1')
+    expect(chip).toHaveTextContent('KiroCrew')
+    expect(screen.queryByTestId('sessions-location-s2')).toBeNull()
+  })
+})
+
+describe('SessionsPage grouping mode persistence', () => {
+  const LS_KEY = 'mc-sessions-group-mode'
+  beforeEach(() => localStorage.removeItem(LS_KEY))
+  afterEach(() => localStorage.removeItem(LS_KEY))
+
+  it('restores the persisted mode on mount', async () => {
+    localStorage.setItem(LS_KEY, 'workspace')
+    renderPage([slot('s1', 'A', NOW - 60_000, { workspace: 'furnace' })])
+    const workspace = await screen.findByTestId('sessions-groupby-workspace')
+    expect(workspace).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByTestId('sessions-groupby-recency')).toHaveAttribute('aria-checked', 'false')
+  })
+
+  it('writes the chosen mode to localStorage on click', async () => {
+    renderPage([slot('s1', 'A', NOW - 60_000)])
+    fireEvent.click(await screen.findByTestId('sessions-groupby-project'))
+    expect(localStorage.getItem(LS_KEY)).toBe('project')
+  })
+
+  it('ignores a junk stored value and falls back to recency', async () => {
+    localStorage.setItem(LS_KEY, 'not-a-mode')
+    renderPage([slot('s1', 'A', NOW - 60_000)])
+    expect(await screen.findByTestId('sessions-groupby-recency')).toHaveAttribute('aria-checked', 'true')
   })
 })

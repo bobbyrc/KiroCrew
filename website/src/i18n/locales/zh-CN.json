@@ -15650,6 +15650,12 @@
       "group_today": "今天",
       "group_yesterday": "昨天",
       "group_earlier": "更早",
+      "group_by_label": "会话分组方式",
+      "group_by_recency": "最近",
+      "group_by_workspace": "工作区",
+      "group_by_project": "项目",
+      "group_no_workspace": "无工作区",
+      "group_no_project": "无项目",
       "empty_title": "暂无会话",
       "empty_subtitle": "新建一个开始吧。"
     },

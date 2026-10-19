@@ -15909,6 +15909,12 @@
       "group_today": "आज",
       "group_yesterday": "बीता कल",
       "group_earlier": "पहले",
+      "group_by_label": "सत्रों को समूहित करें",
+      "group_by_recency": "हाल के",
+      "group_by_workspace": "वर्कस्पेस",
+      "group_by_project": "प्रोजेक्ट",
+      "group_no_workspace": "कोई वर्कस्पेस नहीं",
+      "group_no_project": "कोई प्रोजेक्ट नहीं",
       "empty_title": "कोई सत्र नहीं",
       "empty_subtitle": "शुरू करने के लिए एक बनाओ।"
     },

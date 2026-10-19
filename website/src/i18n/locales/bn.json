@@ -15909,6 +15909,12 @@
       "group_today": "আজ",
       "group_yesterday": "গতকাল",
       "group_earlier": "আগের",
+      "group_by_label": "সেশন গ্রুপ করুন",
+      "group_by_recency": "সাম্প্রতিক",
+      "group_by_workspace": "ওয়ার্কস্পেস",
+      "group_by_project": "প্রকল্প",
+      "group_no_workspace": "কোনো ওয়ার্কস্পেস নেই",
+      "group_no_project": "কোনো প্রকল্প নেই",
       "empty_title": "কোনো সেশন নেই",
       "empty_subtitle": "শুরু করতে একটি তৈরি করো।"
     },

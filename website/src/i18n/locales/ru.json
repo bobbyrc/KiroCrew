@@ -16427,6 +16427,12 @@
       "group_today": "Сегодня",
       "group_yesterday": "Вчера",
       "group_earlier": "Ранее",
+      "group_by_label": "Группировать сессии по",
+      "group_by_recency": "По давности",
+      "group_by_workspace": "Рабочая область",
+      "group_by_project": "Проект",
+      "group_no_workspace": "Без рабочей области",
+      "group_no_project": "Без проекта",
       "empty_title": "Нет сессий",
       "empty_subtitle": "Создайте новую, чтобы начать."
     },

@@ -7552,6 +7552,12 @@
       "group_today": "Today",
       "group_yesterday": "Yesterday",
       "group_earlier": "Earlier",
+      "group_by_label": "Group sessions by",
+      "group_by_recency": "Recency",
+      "group_by_workspace": "Workspace",
+      "group_by_project": "Project",
+      "group_no_workspace": "No workspace",
+      "group_no_project": "No project",
       "empty_title": "No sessions",
       "empty_subtitle": "Create one to get started."
     },

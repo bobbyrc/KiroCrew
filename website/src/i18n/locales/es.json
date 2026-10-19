@@ -16168,6 +16168,12 @@
       "group_today": "Hoy",
       "group_yesterday": "Ayer",
       "group_earlier": "Anteriores",
+      "group_by_label": "Agrupar sesiones por",
+      "group_by_recency": "Recientes",
+      "group_by_workspace": "Espacio de trabajo",
+      "group_by_project": "Proyecto",
+      "group_no_workspace": "Sin espacio de trabajo",
+      "group_no_project": "Sin proyecto",
       "empty_title": "No hay sesiones",
       "empty_subtitle": "Crea una para empezar."
     },
