@@ -12453,6 +12453,8 @@
       "switch_to_conductor_view_nested_by_creator": "切换到指挥视图（会话嵌套在开启它们的会话下）",
       "switch_to_workspace_view_grouped_by_workspace": "切换到工作区视图（按工作区分组会话）",
       "workspace_none": "无工作区",
+      "switch_to_project_view_grouped_by_project": "切换到项目视图（按项目分组会话）",
+      "project_none": "无项目",
       "collapse_sessions_this_one_opened": "收起此会话开启的会话",
       "expand_sessions_this_one_opened": "展开此会话开启的会话",
       "nesting_depth": "嵌套层级：{{depth}}",

@@ -17,6 +17,7 @@ import { SessionRowWindowContext } from '../chat/sessionRowWindow'
 import { slotActivityTs } from '../chat/sessionOrder'
 import { i18nT } from '../../i18n/t'
 import { compareText } from '../../i18n/format'
+import { projectBucketOf } from './projectLabel'
 import { sidebarCollision } from './dnd/collision'
 import { ChatPaneDropZone, RootDropHint, SortableFolderBlock, FolderDragGhost, SessionDragGhost } from './dnd/targets'
 import type { Slot } from './types'
@@ -64,6 +65,18 @@ const offsetSessionDragGhost: Modifier = ({
 }
 const SESSION_DRAG_GHOST_MODIFIERS = [offsetSessionDragGhost]
 
+/** The grouping-lane bucket header (workspace / project).
+ *
+ *  Deliberately stronger than the flat lane's date segments, which stay
+ *  `text-muted`: a workspace or project name is the primary way the user scans a
+ *  grouped list, so it reads as a section title, not a faint time divider. The
+ *  emphasis is all on-system tokens — `text-text-strong` for the brighter fill,
+ *  `font-bold`, and a `border-border` hairline rule under the label (the same
+ *  underline the HistoryPane and board-column headers use) — so it tracks every
+ *  theme instead of a fixed palette. */
+const GROUP_HEADER_CLS =
+  'px-3 pt-3 pb-1 mb-0.5 border-b border-border text-[11px] font-bold text-text-strong uppercase tracking-[.06em] select-none first:pt-1'
+
 /** The workspace a row buckets under in the workspace lane. Trimmed; empty ->
  *  '' so the lane can route it to the "No workspace" bucket, which always sinks
  *  last. The default workspace keeps its own name rather than collapsing into
@@ -72,16 +85,18 @@ function workspaceBucketOf(s: Slot): string {
   return (s.workspace ?? '').trim()
 }
 
-/** Reorder rows into workspace buckets for the workspace lane WITHOUT disturbing
- *  the pinned prefix. Pinned rows (which `flatSlots` places first) stay in their
- *  incoming order as a leading, header-less group; the remaining rows are grouped
- *  by workspace, busiest bucket first, case-insensitive label tiebreak, with the
- *  empty ("No workspace") bucket always last. Row order WITHIN a bucket is the
- *  incoming sort order, so the active sort still decides it. Returns the ordered
- *  rows plus, per row key, the bucket label to show a header for (the first row of
- *  each bucket); pinned rows carry no label. */
-function orderByWorkspace(
+/** Reorder rows into buckets for a grouping lane WITHOUT disturbing the pinned
+ *  prefix. Pinned rows (which `flatSlots` places first) stay in their incoming
+ *  order as a leading, header-less group; the remaining rows are grouped by
+ *  `bucketOf`, busiest bucket first, case-insensitive label tiebreak, with the
+ *  empty bucket (the lane's "No <dimension>" group) always last. Row order WITHIN
+ *  a bucket is the incoming sort order, so the active sort still decides it.
+ *  Returns the ordered rows plus, per row key, the bucket key to show a header for
+ *  (the first row of each bucket); pinned rows carry none. Shared by the workspace
+ *  and project lanes, which differ only in `bucketOf`. */
+function orderByBucket(
   rows: Slot[],
+  bucketOf: (s: Slot) => string,
   isPinned: (s: Slot) => boolean,
   compareLabel: (a: string, b: string) => number,
 ): { ordered: Slot[]; firstOfBucket: Map<string, string> } {
@@ -89,10 +104,10 @@ function orderByWorkspace(
   const buckets = new Map<string, Slot[]>()
   for (const s of rows) {
     if (isPinned(s)) { pinnedRows.push(s); continue }
-    const ws = workspaceBucketOf(s)
-    const list = buckets.get(ws)
+    const key = bucketOf(s)
+    const list = buckets.get(key)
     if (list) list.push(s)
-    else buckets.set(ws, [s])
+    else buckets.set(key, [s])
   }
   const bucketOrder = [...buckets.keys()].sort((a, b) => {
     if (a === '') return 1
@@ -101,9 +116,9 @@ function orderByWorkspace(
   })
   const ordered: Slot[] = [...pinnedRows]
   const firstOfBucket = new Map<string, string>()
-  for (const ws of bucketOrder) {
-    const list = buckets.get(ws)!
-    if (list.length) firstOfBucket.set(list[0].key, ws)
+  for (const key of bucketOrder) {
+    const list = buckets.get(key)!
+    if (list.length) firstOfBucket.set(list[0].key, key)
     ordered.push(...list)
   }
   return { ordered, firstOfBucket }
@@ -465,7 +480,7 @@ export function createListLanes(shell: SidebarScope & LaneRows & FolderBlocks) {
                 // list through the same pinned-header hold the flat lane uses. The
                 // hold's seg function is the bucket label, so a bucket boundary
                 // anchors the hold exactly as a date boundary does in flat.
-                const { ordered, firstOfBucket } = orderByWorkspace(flatSlots, sidebarRows.isPinned, compareText)
+                const { ordered, firstOfBucket } = orderByBucket(flatSlots, workspaceBucketOf, sidebarRows.isPinned, compareText)
                 const labelFor = (ws: string) => (ws === '' ? i18nT('pages.chatSidebar.workspace_none') : ws)
                 const baseSeg = (s: Slot) => {
                   const ws = firstOfBucket.get(s.key)
@@ -491,7 +506,7 @@ export function createListLanes(shell: SidebarScope & LaneRows & FolderBlocks) {
                     <Fragment key={sessionRowIdentity(s)}>
                       {startsAutomaticSection(wsRows, i) && <PinnedSessionDivider />}
                       {showHeader && (
-                        <div data-testid="workspace-segment-header" className="px-3 pt-3 pb-1 text-[11px] font-semibold text-muted uppercase tracking-[.06em] select-none first:pt-1">{labelFor(ws!)}</div>
+                        <div data-testid="workspace-segment-header" className={GROUP_HEADER_CLS}>{labelFor(ws!)}</div>
                       )}
                       {renderSessionRow(s, 0, showDivider, wsScope, wsScope, wsContainer)}
                     </Fragment>
@@ -503,6 +518,67 @@ export function createListLanes(shell: SidebarScope & LaneRows & FolderBlocks) {
               )}
               {renderHiddenReveal('workspace', allHiddenFolders, 0)}
               {renderOlderSessionsHint('workspace')}
+              {renderCrewGroups()}
+            </motion.div>
+            </SessionRowWindowContext.Provider>
+            {dragOverlay}
+          </DndContext>
+  )
+  const renderProjectLane = (): React.ReactNode => (
+          // Project view: the same flat projection as the workspace lane, grouped
+          // by each session's active PROJECT instead of its workspace. The bucket
+          // label is the project directory's folder basename, falling back to a
+          // linked repo, then "No project" (sunk last). Everything else is shared
+          // with the workspace lane — folder membership untouched, sort/filter/
+          // search still apply, one drop target (the chat pane), pinned rows kept
+          // as a leading header-less section, and the same pinned-header hold.
+          <DndContext sensors={dndSensors} collisionDetection={sidebarCollision}
+            measuring={dndMeasuring}
+            onDragStart={handleSidebarDragStart} onDragEnd={handleSidebarDragEnd} onDragCancel={handleSidebarDragCancel}>
+            <DndActiveProbe report={reportDndActive} />
+            {chatDropTarget && onDropSessionRef && activeDrag?.type === 'session'
+              && createPortal(
+                <ChatPaneDropZone refusal={draggingRefRefusal} />,
+                chatDropTarget,
+              )}
+            <SessionRowWindowContext.Provider value={laneRowWindow.rowWindow}>
+            <motion.div ref={setLaneScrollEl} onScroll={laneScrollMemory.onScroll} layoutScroll={rowAnimEnabled} className={`${LIST_BODY_CLS} flex flex-col`} style={{ scrollbarWidth: 'none' }} data-testid="project-view-lane">
+              {folderCreateError && renderFolderCreateError(folderCreateError.folderId, folderCreateError.columnId)}
+              {localGroupHeader}
+              {(() => {
+                const { ordered, firstOfBucket } = orderByBucket(flatSlots, projectBucketOf, sidebarRows.isPinned, compareText)
+                const labelFor = (p: string) => (p === '' ? i18nT('pages.chatSidebar.project_none') : p)
+                const baseSeg = (s: Slot) => {
+                  const p = firstOfBucket.get(s.key)
+                  return p === undefined ? '' : labelFor(p)
+                }
+                const { rows: pRows, navScope: pScope, container: pContainer } = heldLane(ordered, 'project', 'project', baseSeg)
+                const heldKey = heldDisplacedRef.current ? hoverPinRef.current?.key : undefined
+                return pRows.map((s, i) => {
+                  const p = firstOfBucket.get(s.key)
+                  const showHeader = p !== undefined && s.key !== heldKey
+                  const next = i < pRows.length - 1 ? pRows[i + 1] : null
+                  const nextIsActive = isActiveRow(next)
+                  const isActive = isActiveRow(s)
+                  const nextStartsBucket = next ? firstOfBucket.has(next.key) : false
+                  const showDivider = next != null && !isActive && !nextIsActive && !nextStartsBucket
+                    && !startsAutomaticSection(pRows, i + 1)
+                  return (
+                    <Fragment key={sessionRowIdentity(s)}>
+                      {startsAutomaticSection(pRows, i) && <PinnedSessionDivider />}
+                      {showHeader && (
+                        <div data-testid="project-segment-header" className={GROUP_HEADER_CLS}>{labelFor(p!)}</div>
+                      )}
+                      {renderSessionRow(s, 0, showDivider, pScope, pScope, pContainer)}
+                    </Fragment>
+                  )
+                })
+              })()}
+              {flatSlots.length === 0 && shownCrewRowCount === 0 && (
+                <div className="px-3 py-4 text-[12px] text-muted">{i18nT('pages.chatSidebar.no_sessions_match')}</div>
+              )}
+              {renderHiddenReveal('project', allHiddenFolders, 0)}
+              {renderOlderSessionsHint('project')}
               {renderCrewGroups()}
             </motion.div>
             </SessionRowWindowContext.Provider>
@@ -639,5 +715,5 @@ export function createListLanes(shell: SidebarScope & LaneRows & FolderBlocks) {
           </motion.div>
           </SessionRowWindowContext.Provider>
   )
-  return { renderConductorLane, renderFlatLane, renderWorkspaceLane, renderTreeLane }
+  return { renderConductorLane, renderFlatLane, renderWorkspaceLane, renderProjectLane, renderTreeLane }
 }

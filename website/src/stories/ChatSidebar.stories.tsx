@@ -10,29 +10,34 @@ import instancesReducer from '../store/instancesSlice'
 import { ThemeProvider } from '../hooks/useTheme'
 import { api } from '../api/client'
 import ChatSidebar from '../pages/ChatSidebar'
-import type { ChatSidebarProps } from '../pages/chat-sidebar/scope'
+import type { ChatSidebarProps } from '../pages/ChatSidebar'
 import type { ChatSlot } from '../types'
 
 const NOW = new Date('2026-10-19T18:00:00Z').getTime()
 const ago = (min: number) => NOW - min * 60_000
 
-function slot(key: string, title: string, min: number, workspace: string | undefined): ChatSlot {
+function slot(key: string, title: string, min: number, workspace: string | undefined, extra: Partial<ChatSlot> = {}): ChatSlot {
   return {
     key, title, running: false, messages: 4, agent: 'kirocrew',
-    last_ts: new Date(ago(min)).toISOString(), workspace,
+    last_ts: new Date(ago(min)).toISOString(), workspace, ...extra,
   } as ChatSlot
 }
 
-// Sessions across three workspaces plus two unfiled, so the lane shows several
-// buckets and the "No workspace" bucket last.
+// Sessions across three workspaces plus two unfiled, so the workspace lane shows
+// several buckets and the "No workspace" bucket last. Each also carries a project
+// dir (or a linked repo) so the project lane groups them: the KiroCrew workspace
+// sessions sit in two different project checkouts, one session has only a linked
+// repo (the basename fallback), and the two unfiled sessions have no project.
 const SLOTS: ChatSlot[] = [
-  slot('chat-1', 'Add session grouping toggle', 2, 'KiroCrew'),
-  slot('chat-2', 'Fix pin order regression', 40, 'KiroCrew'),
-  slot('chat-3', 'Stream worktree isolation', 180, 'furnace'),
-  slot('chat-4', 'Bufferbloat alert tuning', 1500, 'furnace'),
-  slot('chat-5', 'Keepalived VRRP review', 7000, 'homelab'),
+  slot('chat-1', 'Add session grouping toggle', 2, 'KiroCrew', { project: '/Users/me/code/KiroCrew' }),
+  slot('chat-2', 'Fix pin order regression', 40, 'KiroCrew', { project: '/Users/me/code/KiroCrew' }),
+  slot('chat-3', 'Stream worktree isolation', 180, 'furnace', { project: '/Users/me/code/furnace' }),
+  slot('chat-4', 'Bufferbloat alert tuning', 1500, 'furnace', { project: '/Users/me/code/pingpong' }),
+  slot('chat-5', 'Keepalived VRRP review', 7000, 'homelab', { project: '/Users/me/code/homelab-ansible' }),
   slot('chat-6', 'Quick scratch note', 20, undefined),
-  slot('chat-7', 'Triage dup issues', 9000, undefined),
+  slot('chat-7', 'Triage dup issues', 9000, undefined, {
+    source_links: [{ provider: 'github', number: 42, url: 'https://github.com/kirodotdev/KiroCrew/issues/42', repo: 'kirodotdev/KiroCrew', kind: 'issue' }],
+  } as Partial<ChatSlot>),
 ]
 
 const meta: Meta<typeof ChatSidebar> = {
@@ -90,3 +95,7 @@ export const FolderView: Story = { args, parameters: { lane: 'tree' } }
 
 /** The new workspace lane: sessions grouped by their Kiro Crew workspace. */
 export const WorkspaceView: Story = { args, parameters: { lane: 'workspace' } }
+
+/** The new project lane: sessions grouped by their active project (directory
+ *  basename, or a linked repo), "No project" last. */
+export const ProjectView: Story = { args, parameters: { lane: 'project' } }

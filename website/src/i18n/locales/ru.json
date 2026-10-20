@@ -13029,6 +13029,8 @@
       "switch_to_conductor_view_nested_by_creator": "Переключиться на вид дирижёра (сеансы вложены в тот, который их открыл)",
       "switch_to_workspace_view_grouped_by_workspace": "Переключиться на вид по рабочим областям (сессии сгруппированы по рабочей области)",
       "workspace_none": "Без рабочей области",
+      "switch_to_project_view_grouped_by_project": "Переключиться на вид по проектам (сессии сгруппированы по проекту)",
+      "project_none": "Без проекта",
       "collapse_sessions_this_one_opened": "Свернуть сеансы, открытые этим сеансом",
       "expand_sessions_this_one_opened": "Развернуть сеансы, открытые этим сеансом",
       "nesting_depth": "Глубина вложенности: {{depth}}",

@@ -12837,6 +12837,8 @@
       "switch_to_conductor_view_nested_by_creator": "Passa alla vista direttore (sessioni annidate sotto quella che le ha aperte)",
       "switch_to_workspace_view_grouped_by_workspace": "Passa alla vista per area di lavoro (sessioni raggruppate per area di lavoro)",
       "workspace_none": "Nessuna area di lavoro",
+      "switch_to_project_view_grouped_by_project": "Passa alla vista per progetto (sessioni raggruppate per progetto)",
+      "project_none": "Nessun progetto",
       "collapse_sessions_this_one_opened": "Comprimi le sessioni aperte da questa",
       "expand_sessions_this_one_opened": "Espandi le sessioni aperte da questa",
       "nesting_depth": "Profondità di annidamento: {{depth}}",

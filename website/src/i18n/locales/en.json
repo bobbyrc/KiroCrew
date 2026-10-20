@@ -6980,6 +6980,8 @@
       "switch_to_conductor_view_nested_by_creator": "Switch to conductor view (sessions nested under the session that opened them)",
       "switch_to_workspace_view_grouped_by_workspace": "Switch to workspace view (sessions grouped by workspace)",
       "workspace_none": "No workspace",
+      "switch_to_project_view_grouped_by_project": "Switch to project view (sessions grouped by project)",
+      "project_none": "No project",
       "collapse_sessions_this_one_opened": "Collapse the sessions this one opened",
       "expand_sessions_this_one_opened": "Expand the sessions this one opened",
       "nesting_depth": "Nesting depth: {{depth}}",

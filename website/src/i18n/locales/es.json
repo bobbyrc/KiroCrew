@@ -12837,6 +12837,8 @@
       "switch_to_conductor_view_nested_by_creator": "Cambiar a la vista de director (sesiones anidadas bajo la que las abrió)",
       "switch_to_workspace_view_grouped_by_workspace": "Cambiar a vista por espacio de trabajo (sesiones agrupadas por espacio de trabajo)",
       "workspace_none": "Sin espacio de trabajo",
+      "switch_to_project_view_grouped_by_project": "Cambiar a vista por proyecto (sesiones agrupadas por proyecto)",
+      "project_none": "Sin proyecto",
       "collapse_sessions_this_one_opened": "Contraer las sesiones que abrió esta",
       "expand_sessions_this_one_opened": "Expandir las sesiones que abrió esta",
       "nesting_depth": "Profundidad de anidamiento: {{depth}}",
