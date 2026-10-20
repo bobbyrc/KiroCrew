@@ -19,24 +19,20 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    {
-      name: 'storybook-edition-languages',
-      enforce: 'pre',
-      resolveId(id: string) {
-        return id === 'virtual:kirocrew-edition-languages'
-          ? '\0virtual:kirocrew-edition-languages'
-          : null
-      },
-      load(id: string) {
-        return id === '\0virtual:kirocrew-edition-languages'
-          ? 'export default []\n'
-          : null
-      },
-    },
   ],
   resolve: {
     alias: {
       '@': path.resolve(here, '../src'),
+      // The edition seam's two virtual modules. The app's vite.config.ts
+      // provides them; the Storybook builder does not, so a story that imports
+      // either transitively (ChatSidebar, via extensions.ts) fails to resolve.
+      // The stock public build resolves both to "nothing" — the base module is
+      // a side-effect-only import, the languages module default-exports []. The
+      // single stub file satisfies both. Aliased to a real file rather than a
+      // `\0`-virtual plugin: that convention never resolved under the Storybook
+      // rolldown builder (the build failed on the languages import).
+      'virtual:kirocrew-edition-languages': path.resolve(here, 'edition-stub.ts'),
+      'virtual:kirocrew-edition': path.resolve(here, 'edition-stub.ts'),
     },
     dedupe: CONTEXT_SINGLETON_DEDUPE,
   },

@@ -12835,6 +12835,8 @@
       "needs_approval": "Precisa de aprovação",
       "running_marker": "Em execução",
       "switch_to_conductor_view_nested_by_creator": "Mudar para a visualização de maestro (sessões aninhadas sob a que as abriu)",
+      "switch_to_workspace_view_grouped_by_workspace": "Mudar para a visualização por espaço de trabalho (sessões agrupadas por espaço de trabalho)",
+      "workspace_none": "Sem espaço de trabalho",
       "collapse_sessions_this_one_opened": "Recolher as sessões que esta abriu",
       "expand_sessions_this_one_opened": "Expandir as sessões que esta abriu",
       "nesting_depth": "Profundidade de aninhamento: {{depth}}",

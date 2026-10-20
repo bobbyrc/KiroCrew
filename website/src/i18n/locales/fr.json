@@ -12835,6 +12835,8 @@
       "needs_approval": "Approbation requise",
       "running_marker": "En cours",
       "switch_to_conductor_view_nested_by_creator": "Passer à la vue chef d'orchestre (sessions imbriquées sous celle qui les a ouvertes)",
+      "switch_to_workspace_view_grouped_by_workspace": "Passer à la vue par espace de travail (sessions groupées par espace de travail)",
+      "workspace_none": "Aucun espace de travail",
       "collapse_sessions_this_one_opened": "Replier les sessions ouvertes par celle-ci",
       "expand_sessions_this_one_opened": "Déplier les sessions ouvertes par celle-ci",
       "nesting_depth": "Profondeur d'imbrication : {{depth}}",

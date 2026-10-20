@@ -12643,6 +12643,8 @@
       "needs_approval": "Benötigt Genehmigung",
       "running_marker": "Läuft",
       "switch_to_conductor_view_nested_by_creator": "Zur Dirigentenansicht wechseln (Sitzungen unter der Sitzung verschachtelt, die sie geöffnet hat)",
+      "switch_to_workspace_view_grouped_by_workspace": "Zur Arbeitsbereich-Ansicht wechseln (Sitzungen nach Arbeitsbereich gruppiert)",
+      "workspace_none": "Kein Arbeitsbereich",
       "collapse_sessions_this_one_opened": "Von dieser Sitzung geöffnete Sitzungen einklappen",
       "expand_sessions_this_one_opened": "Von dieser Sitzung geöffnete Sitzungen ausklappen",
       "nesting_depth": "Verschachtelungstiefe: {{depth}}",

@@ -16,6 +16,7 @@ import { collectFolderSubtreeIds } from '../../utils/folderTree'
 import { SessionRowWindowContext } from '../chat/sessionRowWindow'
 import { slotActivityTs } from '../chat/sessionOrder'
 import { i18nT } from '../../i18n/t'
+import { compareText } from '../../i18n/format'
 import { sidebarCollision } from './dnd/collision'
 import { ChatPaneDropZone, RootDropHint, SortableFolderBlock, FolderDragGhost, SessionDragGhost } from './dnd/targets'
 import type { Slot } from './types'
@@ -62,6 +63,51 @@ const offsetSessionDragGhost: Modifier = ({
   return { ...transform, x: transform.x + sideGap, y: transform.y + Math.min(96, roomBelow) }
 }
 const SESSION_DRAG_GHOST_MODIFIERS = [offsetSessionDragGhost]
+
+/** The workspace a row buckets under in the workspace lane. Trimmed; empty ->
+ *  '' so the lane can route it to the "No workspace" bucket, which always sinks
+ *  last. The default workspace keeps its own name rather than collapsing into
+ *  the unassigned bucket -- "default" is a real workspace a user can file into. */
+function workspaceBucketOf(s: Slot): string {
+  return (s.workspace ?? '').trim()
+}
+
+/** Reorder rows into workspace buckets for the workspace lane WITHOUT disturbing
+ *  the pinned prefix. Pinned rows (which `flatSlots` places first) stay in their
+ *  incoming order as a leading, header-less group; the remaining rows are grouped
+ *  by workspace, busiest bucket first, case-insensitive label tiebreak, with the
+ *  empty ("No workspace") bucket always last. Row order WITHIN a bucket is the
+ *  incoming sort order, so the active sort still decides it. Returns the ordered
+ *  rows plus, per row key, the bucket label to show a header for (the first row of
+ *  each bucket); pinned rows carry no label. */
+function orderByWorkspace(
+  rows: Slot[],
+  isPinned: (s: Slot) => boolean,
+  compareLabel: (a: string, b: string) => number,
+): { ordered: Slot[]; firstOfBucket: Map<string, string> } {
+  const pinnedRows: Slot[] = []
+  const buckets = new Map<string, Slot[]>()
+  for (const s of rows) {
+    if (isPinned(s)) { pinnedRows.push(s); continue }
+    const ws = workspaceBucketOf(s)
+    const list = buckets.get(ws)
+    if (list) list.push(s)
+    else buckets.set(ws, [s])
+  }
+  const bucketOrder = [...buckets.keys()].sort((a, b) => {
+    if (a === '') return 1
+    if (b === '') return -1
+    return (buckets.get(b)!.length - buckets.get(a)!.length) || compareLabel(a, b)
+  })
+  const ordered: Slot[] = [...pinnedRows]
+  const firstOfBucket = new Map<string, string>()
+  for (const ws of bucketOrder) {
+    const list = buckets.get(ws)!
+    if (list.length) firstOfBucket.set(list[0].key, ws)
+    ordered.push(...list)
+  }
+  return { ordered, firstOfBucket }
+}
 
 /** The list lane renderers for one shell render. */
 export function createListLanes(shell: SidebarScope & LaneRows & FolderBlocks) {
@@ -389,6 +435,80 @@ export function createListLanes(shell: SidebarScope & LaneRows & FolderBlocks) {
             {dragOverlay}
           </DndContext>
   )
+  const renderWorkspaceLane = (): React.ReactNode => (
+          // Workspace view: every chat exploded out of its folder and grouped by
+          // its Kiro Crew workspace, busiest workspace first, with the "No
+          // workspace" bucket last. Same projection discipline as the flat lane —
+          // folder membership is untouched, sort/filter/search all still apply,
+          // and the ONE drop target is the chat pane (no in-lane sortable: a row's
+          // position is a function of its workspace and the active sort, so there
+          // is nothing a drop inside the lane could store). Pinned rows keep their
+          // leading header-less section, exactly as the flat lane renders them.
+          <DndContext sensors={dndSensors} collisionDetection={sidebarCollision}
+            measuring={dndMeasuring}
+            onDragStart={handleSidebarDragStart} onDragEnd={handleSidebarDragEnd} onDragCancel={handleSidebarDragCancel}>
+            <DndActiveProbe report={reportDndActive} />
+            {chatDropTarget && onDropSessionRef && activeDrag?.type === 'session'
+              && createPortal(
+                <ChatPaneDropZone refusal={draggingRefRefusal} />,
+                chatDropTarget,
+              )}
+            <SessionRowWindowContext.Provider value={laneRowWindow.rowWindow}>
+            <motion.div ref={setLaneScrollEl} onScroll={laneScrollMemory.onScroll} layoutScroll={rowAnimEnabled} className={`${LIST_BODY_CLS} flex flex-col`} style={{ scrollbarWidth: 'none' }} data-testid="workspace-view-lane">
+              {/* Like the flat lane, this view renders no folder headers, so a
+               *  folder-scoped create-failure notice has no mount point here —
+               *  surface it at the top of the lane instead. */}
+              {folderCreateError && renderFolderCreateError(folderCreateError.folderId, folderCreateError.columnId)}
+              {localGroupHeader}
+              {(() => {
+                // Bucket the rows by workspace first, then feed the already-ordered
+                // list through the same pinned-header hold the flat lane uses. The
+                // hold's seg function is the bucket label, so a bucket boundary
+                // anchors the hold exactly as a date boundary does in flat.
+                const { ordered, firstOfBucket } = orderByWorkspace(flatSlots, sidebarRows.isPinned, compareText)
+                const labelFor = (ws: string) => (ws === '' ? i18nT('pages.chatSidebar.workspace_none') : ws)
+                const baseSeg = (s: Slot) => {
+                  const ws = firstOfBucket.get(s.key)
+                  return ws === undefined ? '' : labelFor(ws)
+                }
+                const { rows: wsRows, navScope: wsScope, container: wsContainer } = heldLane(ordered, 'workspace', 'workspace', baseSeg)
+                const heldKey = heldDisplacedRef.current ? hoverPinRef.current?.key : undefined
+                // A header is shown for the first row of each bucket (carried by
+                // firstOfBucket), unless that row is the one currently held under
+                // the pointer — same rule the flat lane applies to date headers.
+                return wsRows.map((s, i) => {
+                  const ws = firstOfBucket.get(s.key)
+                  const showHeader = ws !== undefined && s.key !== heldKey
+                  const next = i < wsRows.length - 1 ? wsRows[i + 1] : null
+                  const nextIsActive = isActiveRow(next)
+                  const isActive = isActiveRow(s)
+                  // No divider before a header, and none across a bucket boundary
+                  // (the next row starting a bucket draws its own header).
+                  const nextStartsBucket = next ? firstOfBucket.has(next.key) : false
+                  const showDivider = next != null && !isActive && !nextIsActive && !nextStartsBucket
+                    && !startsAutomaticSection(wsRows, i + 1)
+                  return (
+                    <Fragment key={sessionRowIdentity(s)}>
+                      {startsAutomaticSection(wsRows, i) && <PinnedSessionDivider />}
+                      {showHeader && (
+                        <div data-testid="workspace-segment-header" className="px-3 pt-3 pb-1 text-[11px] font-semibold text-muted uppercase tracking-[.06em] select-none first:pt-1">{labelFor(ws!)}</div>
+                      )}
+                      {renderSessionRow(s, 0, showDivider, wsScope, wsScope, wsContainer)}
+                    </Fragment>
+                  )
+                })
+              })()}
+              {flatSlots.length === 0 && shownCrewRowCount === 0 && (
+                <div className="px-3 py-4 text-[12px] text-muted">{i18nT('pages.chatSidebar.no_sessions_match')}</div>
+              )}
+              {renderHiddenReveal('workspace', allHiddenFolders, 0)}
+              {renderOlderSessionsHint('workspace')}
+              {renderCrewGroups()}
+            </motion.div>
+            </SessionRowWindowContext.Provider>
+            {dragOverlay}
+          </DndContext>
+  )
   const renderTreeLane = (): React.ReactNode => (
           // Legacy single-lane layout (identical to pre-columns behavior)
           // Scrollbar hidden (scrollbar-none + inline scrollbarWidth covers
@@ -519,5 +639,5 @@ export function createListLanes(shell: SidebarScope & LaneRows & FolderBlocks) {
           </motion.div>
           </SessionRowWindowContext.Provider>
   )
-  return { renderConductorLane, renderFlatLane, renderTreeLane }
+  return { renderConductorLane, renderFlatLane, renderWorkspaceLane, renderTreeLane }
 }

@@ -118,10 +118,14 @@ const DECLARED_LANES = declaredLanes(SIDEBAR_TYPES_SRC)
  * genuinely different renderers, not one with a flag: the board draws folder blocks per
  * column, and its flat mode draws the column's rows whole with no folder block at all.
  */
-const LANE_COVERAGE: Record<string, { lanePref: string; columns: boolean }> = {
+const LANE_COVERAGE: Record<string, { lanePref: string; columns: boolean; workspaces?: number }> = {
   tree: { lanePref: 'tree', columns: false },
   flat: { lanePref: 'flat', columns: false },
   conductor: { lanePref: 'conductor', columns: false },
+  // The workspace lane renders only with more than one workspace among the local
+  // sessions (otherwise it is the flat list under a redundant header), so its
+  // setup says so; the fixture below gives its rows two distinct workspaces.
+  workspace: { lanePref: 'workspace', columns: false, workspaces: 2 },
   board: { lanePref: 'tree', columns: true },
   'board-flat': { lanePref: 'flat', columns: true },
 }
@@ -148,10 +152,10 @@ const FOLDERS: ChatFolder[] = [
  * ancestor is exactly the row the person hid.
  */
 const SLOTS: ChatSlot[] = [
-  { key: 'k-hidden-conductor', title: 'Hidden Conductor', running: false, messages: 2, modified: 4000, folder_id: HIDDEN_FOLDER },
-  { key: 'k-shown-child', title: 'Shown Child', running: false, messages: 2, modified: 3000, folder_id: SHOWN_FOLDER, parent: { slot: 'k-hidden-conductor', key: 'k-hidden-conductor' } },
-  { key: 'k-shown-plain', title: 'Shown Plain', running: false, messages: 2, modified: 2000, folder_id: SHOWN_FOLDER },
-  { key: 'k-nested', title: 'Nested Session', running: false, messages: 2, modified: 1000, folder_id: NESTED_FOLDER },
+  { key: 'k-hidden-conductor', title: 'Hidden Conductor', running: false, messages: 2, modified: 4000, folder_id: HIDDEN_FOLDER, workspace: 'alpha' },
+  { key: 'k-shown-child', title: 'Shown Child', running: false, messages: 2, modified: 3000, folder_id: SHOWN_FOLDER, parent: { slot: 'k-hidden-conductor', key: 'k-hidden-conductor' }, workspace: 'alpha' },
+  { key: 'k-shown-plain', title: 'Shown Plain', running: false, messages: 2, modified: 2000, folder_id: SHOWN_FOLDER, workspace: 'beta' },
+  { key: 'k-nested', title: 'Nested Session', running: false, messages: 2, modified: 1000, folder_id: NESTED_FOLDER, workspace: 'beta' },
 ] as unknown as ChatSlot[]
 
 /** The same population with the one citation pointed at a session that is not there.
@@ -241,7 +245,9 @@ describe('sidebar lanes honour the folder hide — enumerated from source', () =
       for (const boardColumns of [0, 2]) {
         for (const folders of [0, 3]) {
           for (const lineageAvailable of [false, true]) {
-            drawn.add(renderedLane({ lane: lane as SidebarLane, boardColumns, folders, lineageAvailable }))
+            for (const workspaces of [1, 2]) {
+              drawn.add(renderedLane({ lane: lane as SidebarLane, boardColumns, folders, lineageAvailable, workspaces }))
+            }
           }
         }
       }
@@ -254,7 +260,7 @@ describe('sidebar lanes honour the folder hide — enumerated from source', () =
     // configured, no preference -- not even a conductor lane that could draw -- shows
     // anything but the board, which only the flat pref switches to its flat mode.
     for (const lane of DECLARED_LANES) {
-      expect(renderedLane({ lane: lane as SidebarLane, boardColumns: 1, folders: 3, lineageAvailable: true }), lane)
+      expect(renderedLane({ lane: lane as SidebarLane, boardColumns: 1, folders: 3, lineageAvailable: true, workspaces: 2 }), lane)
         .toBe(lane === 'flat' ? 'board-flat' : 'board')
     }
   })
@@ -267,7 +273,7 @@ describe('sidebar lanes honour the folder hide — enumerated from source', () =
     for (const [name, setup] of Object.entries(LANE_COVERAGE)) {
       expect(renderedLane({
         lane: setup.lanePref as SidebarLane, boardColumns: setup.columns ? 1 : 0,
-        folders: FOLDERS.length, lineageAvailable: true,
+        folders: FOLDERS.length, lineageAvailable: true, workspaces: setup.workspaces ?? 1,
       }), name).toBe(name)
     }
   })

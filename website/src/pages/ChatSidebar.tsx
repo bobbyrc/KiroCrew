@@ -488,10 +488,22 @@ function ChatSidebar({
   // button is not drawn at all, and an ungated lane would render a layout the user has
   // no control to leave. The folder filter applies to the flat lane and the tree, NOT
   // to the board.
-  const shownLane = renderedLane({ lane, boardColumns: orderedColumns.length, folders: folders.length, lineageAvailable })
+  // How many distinct workspace buckets the local sessions span, counted over
+  // the UNFILTERED local slots (so the workspace lane is offered consistently,
+  // not toggled on and off by a status/search filter). An empty/absent
+  // workspace counts as the single "No workspace" bucket. The workspace lane is
+  // offered only when this is > 1 — with one bucket it would be the flat list
+  // under a redundant header.
+  const workspaceCount = useMemo(() => {
+    const seen = new Set<string>()
+    for (const s of localSlots) seen.add((s.workspace ?? '').trim())
+    return seen.size
+  }, [localSlots])
+  const shownLane = renderedLane({ lane, boardColumns: orderedColumns.length, folders: folders.length, lineageAvailable, workspaces: workspaceCount })
   const boardLaneActive = shownLane === 'board' || shownLane === 'board-flat'
   const flatLaneActive = shownLane === 'flat'
   const conductorLaneActive = shownLane === 'conductor'
+  const workspaceLaneActive = shownLane === 'workspace'
   // Whether any folder ROW is on screen to drag: the tree, and the board unless
   // flat view empties its columns of folders (`relevantFolders`). The flat lane
   // explodes chats out of their folders and the conductor lane nests by lineage.
@@ -521,7 +533,7 @@ function ChatSidebar({
     setLaneRowWindowRoot(el)
   }, [setLaneRowWindowRoot])
   const laneScrollMemory = useLaneScrollMemory(
-    boardLaneActive ? null : `chat-sidebar-lane:${conductorLaneActive ? 'conductor' : flatLaneActive ? 'flat' : 'tree'}`,
+    boardLaneActive ? null : `chat-sidebar-lane:${conductorLaneActive ? 'conductor' : flatLaneActive ? 'flat' : workspaceLaneActive ? 'workspace' : 'tree'}`,
     laneScrollRef,
   )
 
@@ -558,7 +570,7 @@ function ChatSidebar({
 
   const {
     availableLanes, nextLane, laneSwitchLabel, cycleLane,
-  } = useLaneCycle({ lineageAvailable, boardLaneActive, folders, lane, setLanePersisted })
+  } = useLaneCycle({ lineageAvailable, boardLaneActive, folders, workspaces: workspaceCount, lane, setLanePersisted })
 
   const sidebarRootRef = useRef<HTMLDivElement>(null)
   // Scroll peek (desktop list lanes only); see chat-sidebar/scrollPeek.
@@ -924,6 +936,8 @@ function ChatSidebar({
           lanes.renderConductorLane()
         ) : flatLaneActive ? (
           lanes.renderFlatLane()
+        ) : workspaceLaneActive ? (
+          lanes.renderWorkspaceLane()
         ) : orderedColumns.length === 0 ? (
           lanes.renderTreeLane()
         ) : (

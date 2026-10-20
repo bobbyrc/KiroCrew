@@ -199,7 +199,7 @@ export type SessionFilterKey = 'unread' | 'running' | 'pinned' | 'recent'
  * independent flags would have a fourth state ("flat AND conductor") that means
  * nothing and that every render site would have to decide about.
  */
-export type SidebarLane = 'tree' | 'flat' | 'conductor'
+export type SidebarLane = 'tree' | 'flat' | 'conductor' | 'workspace'
 
 /** One filter dimension that can hide a reveal target: whether it hides THIS
  *  row, and how to drop it. `clear` receives the row because the folder filter
