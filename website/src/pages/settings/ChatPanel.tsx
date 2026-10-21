@@ -445,12 +445,15 @@ export function ChatPanel({ basePath }: { basePath?: string } = {}) {
               )}
             </div>
           )}
+          {/* Selectable Models: label prefers the backend's native name
+              (e.g. Opus 5.5 for the id opus) when it sent one, else the id.
+              value stays the id -- it is the wire value a toggle hides/shows. */}
           <SettingsMultiSelect
             label={i18nT('pages.settings.chatPanel.selectable_models')}
             hint={i18nT('pages.settings.chatPanel.selectable_models_description')}
             options={availableModels.map(model => ({
               value: model.name,
-              label: model.name,
+              label: model.displayName ?? model.name,
               description: model.name === 'auto'
                 ? i18nT('pages.settings.chatPanel.auto_always_visible')
                 : model.description,

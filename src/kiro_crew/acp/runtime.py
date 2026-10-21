@@ -7961,6 +7961,10 @@ class AcpRuntime:
 
         # Populate state from session/new response (configOptions, available models)
         handle.store_session_config(resp)
+        # A backend whose served list is the authority on what it accepts just
+        # fed that list into the cross-session advertised-model cache; persist it
+        # off the loop so the picker keeps it after this session is gone.
+        await handle._persist_advertised_models_if_changed()
         # Both halves of that snapshot are now known, which is what makes the
         # served-default check answerable: the model the backend picked for
         # this session can be one the account's partition does not serve.
@@ -8577,6 +8581,9 @@ class AcpRuntime:
         if self._mirrored_spec_check_needed(mirrored_snapshot):
             await self._require_unchanged_mirrored_spec(resume_sid, mirrored_snapshot)
         handle.store_session_config(resp)
+        # Persist the advertised-model cache off the loop when the resumed
+        # session's capture changed it, same as the create path.
+        await handle._persist_advertised_models_if_changed()
         # session/load echoes ``currentModelId`` exactly like session/new, and a
         # session persisted before the account's served list changed can come
         # back on a default the account does not serve — so the resumed session gets

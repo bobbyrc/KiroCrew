@@ -226,15 +226,27 @@ class TestCcModelsMerge:
         assert "opus-4.8-1m" not in names
         assert "opus-4.8" not in names
 
-    def test_registry_display_name_wins_for_survivors(self):
-        """Filtering keeps the registry's cleaner display name, not the adapter's,
-        while the row's wire value stays the advertised id the backend accepts."""
+    def test_advertised_native_name_wins_for_survivors(self):
+        """The backend's OWN label wins over the registry's stale version (#21747).
+
+        The registry pins ``claude-sonnet-4-6[1m]`` to "Sonnet 4.6 (1M context)",
+        but Claude Code is authoritative for its own picker text: when it
+        advertises a name for the id, that name is shown. The row's wire value
+        stays the advertised id the backend accepts back.
+        """
         prov = _FakeProvider(
-            [{"modelId": "global.anthropic.claude-sonnet-4-6[1m]", "name": "sonnet-4-6-v1-ugly"}]
+            [
+                {
+                    "modelId": "global.anthropic.claude-sonnet-4-6[1m]",
+                    "name": "Sonnet 5.5",
+                    "description": "Most efficient",
+                }
+            ]
         )
         out = _cc_models(_request_with_providers({"s": prov}))
         row = next(m for m in out if m["model_name"] == "global.anthropic.claude-sonnet-4-6[1m]")
-        assert row["display_name"] == "Sonnet 4.6 (1M context)"
+        assert row["display_name"] == "Sonnet 5.5"
+        assert row["description"] == "Most efficient"
 
     def test_unknown_advertised_models_still_pass_through(self):
         # Forward-compat: a model the registry does not list is still offered when
@@ -299,14 +311,15 @@ class TestCcModelsMerge:
         assert names.count("global.anthropic.claude-opus-4-8[1m]") == 1
         assert names.count("global.anthropic.claude-sonnet-4-6[1m]") == 1
 
-    def test_registry_row_keeps_friendly_display_name(self):
-        # When the adapter advertises a known id, the registry's friendly display
-        # name wins while the wire value stays the advertised id.
+    def test_registry_display_is_fallback_when_backend_sends_no_name(self):
+        # The backend advertises the id but with NO usable name (name == id, the
+        # ``_advertised_cc_models`` id-fallback). Then the registry's friendly
+        # display name is kept, while the wire value stays the advertised id.
         prov = _FakeProvider(
             [
                 {
                     "modelId": "global.anthropic.claude-opus-4-8[1m]",
-                    "name": "Opus 4.8",
+                    "name": "",
                     "description": "",
                 },
             ]
@@ -314,6 +327,22 @@ class TestCcModelsMerge:
         out = _cc_models(_request_with_providers({"s": prov}))
         opus48 = next(m for m in out if m["model_name"] == "global.anthropic.claude-opus-4-8[1m]")
         assert opus48["display_name"] == "Opus 4.8 (1M context)"
+
+    def test_advertised_native_name_overrides_registry_display(self):
+        # The backend DOES send a name for a known id: it wins over the registry's.
+        prov = _FakeProvider(
+            [
+                {
+                    "modelId": "global.anthropic.claude-opus-4-8[1m]",
+                    "name": "Opus 5.5",
+                    "description": "For complex work",
+                },
+            ]
+        )
+        out = _cc_models(_request_with_providers({"s": prov}))
+        opus = next(m for m in out if m["model_name"] == "global.anthropic.claude-opus-4-8[1m]")
+        assert opus["display_name"] == "Opus 5.5"
+        assert opus["description"] == "For complex work"
 
     def test_configured_default_force_included(self):
         out = _cc_models(_request_with_providers({}), configured_default="custom-model-xyz")
