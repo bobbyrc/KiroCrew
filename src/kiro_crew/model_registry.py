@@ -94,6 +94,23 @@ _FALLBACK_PROVIDER_IDS: dict[str, str] = {
     "auto": "",
 }
 
+# Bare family aliases Claude Code resolves to its OWN current model — passed
+# through ``to_provider_id`` UNCHANGED on the ``claude_code`` provider rather
+# than folded onto the registry's fixed versioned ids. The registry's versioned
+# entries (``sonnet-4.6-1m`` -> ``global.anthropic.claude-sonnet-4-6[1m]``) go
+# stale on every model release, so a session that asks for ``sonnet`` would be
+# pinned to the last version this file happened to list instead of whatever
+# Claude Code now calls Sonnet. Sending the bare name lets claude-agent-acp pick
+# the current model, and the registry can never pin a user to a superseded one.
+#
+# ``claude_code`` ONLY: on the ``acp`` (kiro) path these spellings are DISTINCT
+# real models (see ``to_acp_id``), and ``acp`` never reaches this function's
+# fold anyway — it goes through ``to_acp_id``. ``haiku`` is included though the
+# registry has no ``haiku`` alias for claude_code (``claude-haiku-4.5`` folds
+# onto Sonnet there): passing the bare name through lets Claude Code serve its
+# real current Haiku instead of a silent Sonnet substitution.
+_CLAUDE_CODE_PASSTHROUGH_ALIASES: frozenset[str] = frozenset({"sonnet", "opus", "haiku", "fable"})
+
 _REGISTRY: dict[str, dict[str, Any]] = {}
 try:
     with open(_REGISTRY_FILE, encoding="utf-8") as _f:
@@ -248,6 +265,38 @@ def _admit_ids(values: Iterable[object], store: str) -> list[str]:
             ADVERTISED_MODEL_ID_MAX_CHARS,
         )
     return admitted
+
+
+# A display label is advisory text, not an id, so it gets its own generous bound
+# rather than the id-char limit: a backend's model description can be a sentence.
+# Over-long text is TRUNCATED (unlike an id, where truncation would name a
+# different model) because a clipped label is still a correct, if shorter, label.
+ADVERTISED_LABEL_MAX_CHARS = 400
+
+
+def _admit_label_rows(rows: object, kept_ids: Sequence[str]) -> dict[str, dict[str, str]]:
+    """Admit ``{id: {"name", "description"}}`` label rows for already-kept ids.
+
+    Labels are advisory: they decorate the id list the picker already trusts, so
+    this keeps a label ONLY for an id that passed :func:`_admit_ids` (``kept_ids``)
+    and silently drops anything else -- a label for a refused/unknown id, a
+    non-dict row, a non-string field. Each field is coerced to ``str`` and
+    clamped to ``ADVERTISED_LABEL_MAX_CHARS``; an empty ``name`` AND empty
+    ``description`` yields no entry (nothing to show). Never raises.
+    """
+    if not isinstance(rows, dict):
+        return {}
+    kept = set(kept_ids)
+    out: dict[str, dict[str, str]] = {}
+    for model_id, row in rows.items():
+        if model_id not in kept or not isinstance(row, dict):
+            continue
+        name = str(row.get("name", "") or "")[:ADVERTISED_LABEL_MAX_CHARS]
+        description = str(row.get("description", "") or "")[:ADVERTISED_LABEL_MAX_CHARS]
+        if not name and not description:
+            continue
+        out[model_id] = {"name": name, "description": description}
+    return out
 
 
 def _kiro_windows_cache_path() -> Path:
@@ -502,6 +551,22 @@ def persist_kiro_windows() -> None:
 # never brick import.
 _ADVERTISED_MODELS: dict[str, list[str]] = {}
 
+# Native display labels a backend advertised for its ids, per namespace:
+# ``{namespace: {model_id: {"name": str, "description": str}}}``. Parallel to
+# ``_ADVERTISED_MODELS`` (which stays a plain id list so every id-list caller is
+# untouched) so the COLD picker path -- no live session, reading the persisted
+# snapshot -- can show each model's own name/description instead of the raw id.
+# A live session already carries these on its ``availableModels`` rows; this is
+# the same labels, kept across a harness switch or a gateway restart. Same
+# degrade-silently contract as ``_ADVERTISED_MODELS``.
+_ADVERTISED_META: dict[str, dict[str, dict[str, str]]] = {}
+
+# Reserved top-level sidecar key under which the label block is persisted. A
+# namespace can never collide with it: ``model_id_namespace`` values are plain
+# identifiers, and the loader skips this key so an old reader (which treats every
+# top-level key as ``namespace -> [ids]``) and a key named here never meet.
+_ADVERTISED_META_SIDECAR_KEY = "__labels__"
+
 # Inference-profile prefixes stripped when folding an advertised provider id to
 # a comparison key. Longest-first so ``global.anthropic.`` wins over a bare
 # ``anthropic.`` that is a suffix of it.
@@ -532,7 +597,11 @@ def _load_advertised_models() -> None:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
         if isinstance(data, dict):
+            meta_block = data.get(_ADVERTISED_META_SIDECAR_KEY)
             for provider, ids in data.items():
+                # The reserved label block is not a namespace; hydrate it below.
+                if provider == _ADVERTISED_META_SIDECAR_KEY:
+                    continue
                 if isinstance(provider, str) and isinstance(ids, list):
                     # Same admission as the refresh: the sidecar is a persisted
                     # copy of the same population, and an oversized file must
@@ -540,6 +609,17 @@ def _load_advertised_models() -> None:
                     clean = _admit_ids(ids, f"advertised-model sidecar for {provider}")
                     if clean:
                         _ADVERTISED_MODELS[provider] = clean
+            # Labels are advisory: load only for ids that survived admission, and
+            # tolerate any shape (a legacy sidecar has no block at all). A bad
+            # block never blocks the id list the picker falls back to.
+            if isinstance(meta_block, dict):
+                for provider, rows in meta_block.items():
+                    if not isinstance(provider, str) or not isinstance(rows, dict):
+                        continue
+                    kept = _ADVERTISED_MODELS.get(provider, ())
+                    labels = _admit_label_rows(rows, kept)
+                    if labels:
+                        _ADVERTISED_META[provider] = labels
     except (OSError, ValueError, TypeError):  # pragma: no cover - corrupt/absent cache
         logger.debug("advertised-model cache unreadable; using registry allowlist", exc_info=True)
 
@@ -547,7 +627,11 @@ def _load_advertised_models() -> None:
 _load_advertised_models()
 
 
-def refresh_advertised_models(provider: str, ids: Sequence[str]) -> bool:
+def refresh_advertised_models(
+    provider: str,
+    ids: Sequence[str],
+    rows: Sequence[object] | None = None,
+) -> bool:
     """Ingest a provider's advertised model ids into the cache.
 
     In-memory only (cheap, non-blocking) so it is safe to call from an async
@@ -560,6 +644,14 @@ def refresh_advertised_models(provider: str, ids: Sequence[str]) -> bool:
     a good cached list from a prior session) and returns ``False``. The stored
     list is deduped preserving order.
 
+    ``rows`` is the OPTIONAL rich ``availableModels`` payload the same session
+    carries (``[{"modelId", "name", "description"}, ...]``). When given, each
+    kept id's native ``name``/``description`` is stored in ``_ADVERTISED_META``
+    so the COLD picker path can show the backend's own labels instead of the raw
+    id. Omitting it (the legacy call) leaves labels untouched -- the id list is
+    the load-bearing half and never depends on labels being present. A label
+    change alone also returns ``True`` so the sidecar is re-persisted.
+
     Bounded at retention by ``ADVERTISED_MODELS_MAX_IDS`` distinct ids and
     ``ADVERTISED_MODEL_ID_MAX_CHARS`` per id, the same pair
     :func:`refresh_kiro_windows` applies to the same rows. An id past either
@@ -570,10 +662,31 @@ def refresh_advertised_models(provider: str, ids: Sequence[str]) -> bool:
     clean = _admit_ids(ids, f"advertised-model cache for {provider}")
     if not clean:
         return False
-    if _ADVERTISED_MODELS.get(provider) == clean:
-        return False
-    _ADVERTISED_MODELS[provider] = clean
-    return True
+    changed = False
+    if _ADVERTISED_MODELS.get(provider) != clean:
+        _ADVERTISED_MODELS[provider] = clean
+        changed = True
+    if rows is not None:
+        # Map id -> {name, description} from the rich payload, then admit against
+        # the ids that survived above (a label for a refused id is dropped).
+        raw: dict[str, dict[str, str]] = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            model_id = row.get("modelId") or row.get("value") or ""
+            if isinstance(model_id, str) and model_id.strip():
+                raw[model_id] = {
+                    "name": row.get("name", "") or "",
+                    "description": row.get("description", "") or "",
+                }
+        labels = _admit_label_rows(raw, clean)
+        if _ADVERTISED_META.get(provider) != labels:
+            if labels:
+                _ADVERTISED_META[provider] = labels
+            else:
+                _ADVERTISED_META.pop(provider, None)
+            changed = True
+    return changed
 
 
 def persist_advertised_models() -> None:
@@ -588,7 +701,18 @@ def persist_advertised_models() -> None:
     :func:`persist_kiro_windows`.
     """
     try:
-        snapshot = {p: list(v) for p, v in dict(_ADVERTISED_MODELS).items()}
+        snapshot: dict[str, object] = {p: list(v) for p, v in dict(_ADVERTISED_MODELS).items()}
+        # Labels ride under a reserved key the loader skips, so a legacy reader
+        # (every top-level key is ``namespace -> [ids]``) never trips on it and a
+        # new reader hydrates ``_ADVERTISED_META`` from it. Only non-empty label
+        # maps are written.
+        meta = {
+            p: {mid: dict(lbl) for mid, lbl in rows.items()}
+            for p, rows in dict(_ADVERTISED_META).items()
+            if rows
+        }
+        if meta:
+            snapshot[_ADVERTISED_META_SIDECAR_KEY] = meta
         path = _advertised_models_cache_path()
         atomic_write(path, json.dumps(snapshot))
     except OSError:  # pragma: no cover - disk full / perms
@@ -598,6 +722,31 @@ def persist_advertised_models() -> None:
 def advertised_models(provider: str) -> list[str]:
     """The provider ids ``provider`` last advertised, or ``[]`` on a cold cache."""
     return list(_ADVERTISED_MODELS.get(provider, ()))
+
+
+def advertised_model_rows(provider: str) -> list[dict[str, str]]:
+    """Advertised ids for ``provider`` as picker rows, carrying native labels.
+
+    ``[{"model_name", "display_name", "description"}, ...]`` in the cached id
+    order. ``display_name`` is the backend's own ``name`` when one was persisted
+    (:func:`refresh_advertised_models` with ``rows``), else the id itself -- so
+    the COLD picker path (no live session) shows the same labels a live session
+    would, instead of a raw id. Pairs with :func:`advertised_models`, which stays
+    the id-only reader every entitlement check uses.
+    """
+    rows: list[dict[str, str]] = []
+    labels = _ADVERTISED_META.get(provider, {})
+    for model_id in _ADVERTISED_MODELS.get(provider, ()):
+        label = labels.get(model_id, {})
+        name = label.get("name", "")
+        rows.append(
+            {
+                "model_name": model_id,
+                "display_name": name or model_id,
+                "description": label.get("description", ""),
+            }
+        )
+    return rows
 
 
 def _normalize_advertised_key(provider_id: str) -> str:
@@ -897,6 +1046,14 @@ def to_provider_id(canonical_or_id: str, provider: str) -> str:
     """
     if canonical_or_id == "":
         return ""
+    # Claude Code resolves its OWN current model from a bare family alias, so
+    # send the bare name unchanged rather than the registry's fixed versioned id
+    # (which goes stale on every release). claude_code only — see
+    # ``_CLAUDE_CODE_PASSTHROUGH_ALIASES``. Checked before registry resolution so
+    # a listed alias (``sonnet`` IS a registry alias of ``sonnet-4.6-1m``) is not
+    # folded onto the stale versioned id first.
+    if provider == "claude_code" and canonical_or_id in _CLAUDE_CODE_PASSTHROUGH_ALIASES:
+        return canonical_or_id
     key = _resolve_canonical(canonical_or_id, provider)
     if key is not None:
         return _REGISTRY[key].get("providers", {}).get(provider, "")

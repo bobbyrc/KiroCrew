@@ -592,8 +592,12 @@ def _advertised_cc_models(request: web.Request, namespace: str) -> list[dict]:
                 if m.get("modelId")
             ]
     return [
-        {"model_name": m, "display_name": m, "description": ""}
-        for m in model_registry.advertised_models(namespace)
+        {
+            "model_name": r["model_name"],
+            "display_name": r.get("display_name", "") or r["model_name"],
+            "description": r.get("description", ""),
+        }
+        for r in model_registry.advertised_model_rows(namespace)
     ]
 
 
@@ -786,15 +790,41 @@ def _cc_models(request: web.Request, configured_default: str = "") -> list[dict]
 
     merged: list[dict] = []
     seen: dict[str, int] = {}
+    # Advertised ids that carry a NATIVE label (``display_name`` differs from the
+    # id -- i.e. the backend sent a real name, not the id-fallback
+    # ``_advertised_cc_models`` fills in). Claude Code is authoritative for its
+    # OWN picker text, so on a collision its label wins over the registry's,
+    # which pins a stale version (bare ``opus`` -> "Opus 4.8 (1M context)" when
+    # the backend calls it "Opus 5.5"). The wire id is always the advertised one.
+    advertised_label: dict[str, dict] = {}
+    for e in advertised:
+        mid = e.get("model_name", "")
+        key = _normalize_model_key(mid)
+        disp = e.get("display_name", "")
+        if key and key != "auto" and disp and disp != mid:
+            advertised_label[key] = e
     for entry in (*registry_rows, *advertised):
         name = entry.get("model_name", "")
         key = _normalize_model_key(name)
         if not key:
             continue
         if key in seen:
-            # Collision: registry keeps display, advertised id keeps the wire value.
+            # Collision. The advertised id always supplies the wire value; its
+            # NATIVE label (when it has one) also replaces the registry display,
+            # since the live backend names its own models more currently than the
+            # static catalog. Falls back to the registry display when the backend
+            # advertised no name for this id.
             if key != "auto":
-                merged[seen[key]] = {**merged[seen[key]], "model_name": name}
+                label = advertised_label.get(key)
+                if label is not None:
+                    merged[seen[key]] = {
+                        **merged[seen[key]],
+                        "model_name": name,
+                        "display_name": label.get("display_name", ""),
+                        "description": label.get("description", ""),
+                    }
+                else:
+                    merged[seen[key]] = {**merged[seen[key]], "model_name": name}
             continue
         seen[key] = len(merged)
         merged.append(entry)

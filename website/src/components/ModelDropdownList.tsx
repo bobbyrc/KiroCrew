@@ -17,7 +17,7 @@ import { i18nT } from '../i18n/t'
  * only the shapes are pinned.
  */
 export type ModelItem =
-  Pick<ModelInfo, 'name'> & Partial<Pick<ModelInfo, 'description' | 'rateMultiplier'>>
+  Pick<ModelInfo, 'name'> & Partial<Pick<ModelInfo, 'displayName' | 'description' | 'rateMultiplier'>>
 
 /** The multiplier Auto is pinned at, and the baseline the badges are relative to. */
 const BASELINE = 1
@@ -151,10 +151,12 @@ export default function ModelDropdownList({ models, activeModel, onSelect, loadi
         return (
           <button key={m.name} ref={active ? activeRef : undefined} role="option" aria-selected={active} tabIndex={-1} className={`w-full text-left px-2.5 py-2 flex flex-col gap-0.5 rounded-md cursor-pointer transition-all border-none bg-transparent ${active ? 'bg-accent-subtle' : 'hover:bg-bg-hover'}`} onClick={() => onSelect(m.name)}>
             <div className="flex items-center gap-2">
-              {/* `data-model-name` carries the ID, not the label: the harnesses and
+              {/* `data-model-id` carries the ID, not the label: the harnesses and
                   the keyboard-nav tests select rows by the value that is sent, and a
-                  translated label would make that selector locale-dependent. */}
-              <span data-model-name data-model-id={m.name} className={`text-[13px] font-mono font-semibold truncate ${active ? 'text-accent' : 'text-text'}`}>{rowLabel(m.name)}</span>
+                  translated label would make that selector locale-dependent. The
+                  VISIBLE text prefers the backend's native label (e.g. "Opus 5.5"
+                  for the id `opus`) when it sent one, else the id via rowLabel. */}
+              <span data-model-name data-model-id={m.name} className={`text-[13px] font-mono font-semibold truncate ${active ? 'text-accent' : 'text-text'}`}>{m.displayName ?? rowLabel(m.name)}</span>
               {active && <span className="text-accent text-[12px]"><Check className="lucide-inline" /></span>}
               {/* Credit multiplier. Rendered only when the backend reported a
                   usable one — a cold-start or pre-feature cached row has none,
