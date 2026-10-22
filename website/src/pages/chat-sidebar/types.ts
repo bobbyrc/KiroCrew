@@ -106,6 +106,10 @@ export interface Slot {
   // simply never declared on this local view of the type.
   messages?: number
   workspace?: string
+  /** Active project directory of this session (wire `ChatSlot.project`).
+   *  Read by the project lane to bucket rows by their project; the lane
+   *  derives a short label from it (folder basename, or a linked repo). */
+  project?: string
   /** Remote-execution binding — see `ChatSlot` in ../../types. Declared on this
    *  narrowed view too: the row reads `executor` to decide whether to render the
    *  crew chip, and a field absent from this interface is invisible to it no
@@ -141,6 +145,11 @@ export interface Slot {
     // OPTIONAL on the wire for the same reason `kind` is: a bundle newer than
     // the gateway it talks to must keep rendering. See `chipLabel`.
     label?: string
+    // The linked repo, `owner/name` (wire `ChatSlot.source_links[].repo`).
+    // OPTIONAL like the other wire-synced fields. Read by the project lane's
+    // bucket fallback and by the search predicate, so a session with no project
+    // directory still groups and matches on its linked repo.
+    repo?: string
     ci?: 'running' | 'passed' | 'failed' | null
     state?: 'open' | 'draft' | 'merged' | 'closed'
     // Owner-gated chips spread the whole cached chip-status entry, which also
@@ -187,19 +196,21 @@ export interface AgentInfo {
 export type SessionFilterKey = 'unread' | 'running' | 'pinned' | 'recent'
 
 /**
- * Which session lane the list renders. One persisted preference, three values.
+ * Which session lane the list renders. One persisted preference.
  *
  * `tree` is the folder hierarchy. `flat` explodes every chat out of its folder into
  * one recency-sorted lane. `conductor` nests each session under the session that
  * OPENED it (`session_create`), which is a different axis from folders entirely: a
  * conductor and the workers it spawned are one unit of work wherever their folders
- * put them.
+ * put them. `workspace` and `project` are two more flat projections that swap the
+ * date segments for grouping headers — by the session's Kiro Crew workspace, or by
+ * its active project (directory basename, or a linked repo).
  *
- * An enum rather than two booleans because the lanes are mutually exclusive, and two
- * independent flags would have a fourth state ("flat AND conductor") that means
+ * An enum rather than a set of booleans because the lanes are mutually exclusive, and
+ * independent flags would have combined states ("flat AND conductor") that mean
  * nothing and that every render site would have to decide about.
  */
-export type SidebarLane = 'tree' | 'flat' | 'conductor'
+export type SidebarLane = 'tree' | 'flat' | 'conductor' | 'workspace' | 'project'
 
 /** One filter dimension that can hide a reveal target: whether it hides THIS
  *  row, and how to drop it. `clear` receives the row because the folder filter

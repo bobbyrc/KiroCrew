@@ -190,7 +190,7 @@ const CONDUCTOR_SUPERSEDED_COLLAPSED_LS_KEY = 'mc-sidebar-conductor-collapsed'
  */
 export function readStoredLane(): SidebarLane {
   const stored = localStorage.getItem(SIDEBAR_LANE_LS_KEY)
-  if (stored === 'tree' || stored === 'flat' || stored === 'conductor') return stored
+  if (stored === 'tree' || stored === 'flat' || stored === 'conductor' || stored === 'workspace' || stored === 'project') return stored
   return localStorage.getItem(FLAT_VIEW_LS_KEY) === '1' ? 'flat' : 'tree'
 }
 

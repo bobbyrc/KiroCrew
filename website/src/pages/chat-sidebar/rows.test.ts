@@ -308,6 +308,27 @@ describe('every filter dimension answers the three consumers together', () => {
     expect(keys(buildSidebarRows(inputs([titled, linked], { filters: { search: { text: '#70' } } })).filteredSlots)).toEqual(['l'])
   })
 
+  it('matches on the session project (path and basename) and a linked repo', () => {
+    const inProj = local('p', { title: 'no-hit', project: '/Users/me/code/KiroCrew' })
+    const byRepo = local('r', { title: 'no-hit', source_links: [{ number: 1, provider: 'github', kind: 'change', url: 'u', repo: 'kirodotdev/KiroCrew' }] as Slot['source_links'] })
+    const other = local('o', { title: 'no-hit', project: '/Users/me/code/pingpong' })
+    // The project basename matches both the dir session and the repo session.
+    expect(keys(buildSidebarRows(inputs([inProj, byRepo, other], { filters: { search: { text: 'kirocrew' } } })).filteredSlots).sort())
+      .toEqual(['p', 'r'])
+    // A parent directory segment still finds the session filed under it.
+    expect(keys(buildSidebarRows(inputs([inProj, other], { filters: { search: { text: '/code/pingpong' } } })).filteredSlots))
+      .toEqual(['o'])
+    // The repo owner also matches.
+    expect(keys(buildSidebarRows(inputs([inProj, byRepo], { filters: { search: { text: 'kirodotdev' } } })).filteredSlots))
+      .toEqual(['r'])
+    // A project-only match rides along beside whatever the backend ranked (a
+    // ranked row passes on its rank; the project match adds the unranked one).
+    const ranked = buildSidebarRows(inputs([inProj, other], {
+      local: { searchRanks: new Map([['o', 0]]) }, filters: { search: { text: 'kirocrew' } },
+    }))
+    expect(keys(ranked.filteredSlots).sort()).toEqual(['o', 'p'])
+  })
+
   it('keeps every row filed in a folder whose NAME the query matched', () => {
     const rows = buildSidebarRows(inputs([local('in', { title: 'q' }), local('out', { title: 'q' })], {
       local: { folderOf: { in: 'F1' } }, filters: { search: { text: 'alpha', folderMatches: new Set(['F1']) } },

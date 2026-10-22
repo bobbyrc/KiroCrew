@@ -28,6 +28,7 @@ import { crewOf } from '../../hooks/useInstanceSessions'
 import { isWithinRecentWindow } from '../recentWindow'
 import { splitStaleSlots, type StaleSplit } from '../staleCollapse'
 import { isPeerRow, sessionRowIdentity } from './rowIdentity'
+import { projectSearchText } from './projectLabel'
 import type { MemorySourceRow } from '../../lib/agentMemorySource'
 import type { AgentInfo, FilterDimension, RevealBlockingFilter, SessionFilterKey, SidebarSourceLink, Slot } from './types'
 
@@ -570,8 +571,9 @@ function makeDimensions(
       clear: () => clears.tags(),
     },
     {
-      // Text search: title and source links, never key/agent once the backend has
-      // ranked (rows it excluded) -- a badge id is a card-visible PROPERTY.
+      // Text search: title, source links and the session's PROJECT/REPO, never
+      // key/agent once the backend has ranked (rows it excluded) -- a badge id or
+      // a project name is a card-visible PROPERTY.
       filtersRow: slot => {
         if (!search.text) return true
         const q = search.text.toLowerCase()
@@ -586,12 +588,17 @@ function makeDimensions(
         const sourceMatch = (slot.source_links ?? []).some(link =>
           String(link.number).startsWith(q)
           || chipLabel(link).toLowerCase().startsWith(q))
+        // The session's project directory (full path and basename) and any linked
+        // repo, matched as a substring so typing a repo/project name in the search
+        // box finds its sessions -- the same label the project lane groups by.
+        const projectMatch = projectSearchText(slot).some(t => t.includes(q))
         // The ranks are LOCAL keys: a peer row matches on its own visible fields.
         if (searchRanks) {
           const key = localKeyOf(slot)
-          return (key !== null && searchRanks.has(key)) || titleMatch || sourceMatch
+          return (key !== null && searchRanks.has(key)) || titleMatch || sourceMatch || projectMatch
         }
         return sourceMatch
+          || projectMatch
           || ((slot.title || '') + slot.key + (slot.agent || '')).toLowerCase().includes(q)
       },
       narrows: () => Boolean(search.text),

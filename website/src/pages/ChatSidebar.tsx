@@ -12,6 +12,7 @@ import { useConnected } from '../hooks/useConnected'
 import { fetchHistory, deleteHistorySession, switchSlot, clearHistorySessions } from '../store/chatSlice'
 import { api } from '../api/client'
 import { computeRecentRank, clampTintCount } from '../utils/recencyTint'
+import { pathBasename, stripTrailingSeparators } from '../utils/pathBasename'
 import { useDndSensors } from '../hooks/useDndSensors'
 import { useSessionPalette } from '../hooks/useSessionPalette'
 import { setCrewEnabled } from '../lib/crewEnabled'
@@ -74,6 +75,10 @@ import { useFolderChatCreate, useSessionCreate } from './chat-sidebar/create'
 export { FOLDER_BODY_INSET_PX, FOLDER_BODY_CLS, BOARD_FOLDER_BODY_CLS, SIDEBAR_TEXT_CONTROL_CLS, STALE_TOGGLE_CLS } from './chat-sidebar/chrome'
 export { connectedChannelLinks } from './chat-sidebar/SessionRow'
 import type { ChatSidebarProps, SidebarScope } from './chat-sidebar/scope'
+// Re-exported so external consumers (e.g. the Storybook story) take the props
+// type from the facade, keeping the owner modules imported only by the facade
+// and by each other (see ChatSidebar.ownerComposition.test.ts).
+export type { ChatSidebarProps } from './chat-sidebar/scope'
 import { createLaneRows } from './chat-sidebar/laneRows'
 export { SIDEBAR_DISPLACEMENT_WINDOW } from './chat-sidebar/laneRows'
 import { createFolderBlocks } from './chat-sidebar/folderBlocks'
@@ -488,10 +493,40 @@ function ChatSidebar({
   // button is not drawn at all, and an ungated lane would render a layout the user has
   // no control to leave. The folder filter applies to the flat lane and the tree, NOT
   // to the board.
-  const shownLane = renderedLane({ lane, boardColumns: orderedColumns.length, folders: folders.length, lineageAvailable })
+  // How many distinct workspace buckets the local sessions span, counted over
+  // the UNFILTERED local slots (so the workspace lane is offered consistently,
+  // not toggled on and off by a status/search filter). An empty/absent
+  // workspace counts as the single "No workspace" bucket. The workspace lane is
+  // offered only when this is > 1 — with one bucket it would be the flat list
+  // under a redundant header.
+  const workspaceCount = useMemo(() => {
+    const seen = new Set<string>()
+    for (const s of localSlots) seen.add((s.workspace ?? '').trim())
+    return seen.size
+  }, [localSlots])
+  // How many distinct PROJECT buckets the local sessions span, same discipline
+  // as the workspace count above: counted over the unfiltered local slots, with
+  // an empty/absent project folding into the single "No project" bucket. The
+  // bucket key is the short label the project lane groups by — the project
+  // directory's folder basename, else a linked repo — so two sessions whose
+  // project paths differ only above the last segment share one bucket, exactly
+  // as the lane will group them. Offered only when this is > 1.
+  const projectCount = useMemo(() => {
+    const seen = new Set<string>()
+    for (const s of localSlots) {
+      const dir = (s.project ?? '').trim()
+      if (dir) { seen.add(pathBasename(stripTrailingSeparators(dir))); continue }
+      const repo = s.source_links?.find(l => (l.repo ?? '').trim() !== '')?.repo
+      seen.add((repo ?? '').trim())
+    }
+    return seen.size
+  }, [localSlots])
+  const shownLane = renderedLane({ lane, boardColumns: orderedColumns.length, folders: folders.length, lineageAvailable, workspaces: workspaceCount, projects: projectCount })
   const boardLaneActive = shownLane === 'board' || shownLane === 'board-flat'
   const flatLaneActive = shownLane === 'flat'
   const conductorLaneActive = shownLane === 'conductor'
+  const workspaceLaneActive = shownLane === 'workspace'
+  const projectLaneActive = shownLane === 'project'
   // Whether any folder ROW is on screen to drag: the tree, and the board unless
   // flat view empties its columns of folders (`relevantFolders`). The flat lane
   // explodes chats out of their folders and the conductor lane nests by lineage.
@@ -521,7 +556,7 @@ function ChatSidebar({
     setLaneRowWindowRoot(el)
   }, [setLaneRowWindowRoot])
   const laneScrollMemory = useLaneScrollMemory(
-    boardLaneActive ? null : `chat-sidebar-lane:${conductorLaneActive ? 'conductor' : flatLaneActive ? 'flat' : 'tree'}`,
+    boardLaneActive ? null : `chat-sidebar-lane:${conductorLaneActive ? 'conductor' : flatLaneActive ? 'flat' : workspaceLaneActive ? 'workspace' : projectLaneActive ? 'project' : 'tree'}`,
     laneScrollRef,
   )
 
@@ -558,7 +593,7 @@ function ChatSidebar({
 
   const {
     availableLanes, nextLane, laneSwitchLabel, cycleLane,
-  } = useLaneCycle({ lineageAvailable, boardLaneActive, folders, lane, setLanePersisted })
+  } = useLaneCycle({ lineageAvailable, boardLaneActive, folders, workspaces: workspaceCount, projects: projectCount, lane, setLanePersisted })
 
   const sidebarRootRef = useRef<HTMLDivElement>(null)
   // Scroll peek (desktop list lanes only); see chat-sidebar/scrollPeek.
@@ -924,6 +959,10 @@ function ChatSidebar({
           lanes.renderConductorLane()
         ) : flatLaneActive ? (
           lanes.renderFlatLane()
+        ) : workspaceLaneActive ? (
+          lanes.renderWorkspaceLane()
+        ) : projectLaneActive ? (
+          lanes.renderProjectLane()
         ) : orderedColumns.length === 0 ? (
           lanes.renderTreeLane()
         ) : (

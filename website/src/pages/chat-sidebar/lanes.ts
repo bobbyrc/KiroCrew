@@ -44,23 +44,32 @@ export type RenderedLane = SidebarLane | 'board' | 'board-flat'
  *  and the lane would be the flat list with a chevron nowhere), and `flat` a folder to
  *  explode. A preference whose condition is missing falls back to the folder tree, the
  *  one lane that can always render. */
-export function renderedLane({ lane, boardColumns, folders, lineageAvailable }: {
+export function renderedLane({ lane, boardColumns, folders, lineageAvailable, workspaces, projects }: {
   lane: SidebarLane
   boardColumns: number
   folders: number
   lineageAvailable: boolean
+  workspaces: number
+  projects: number
 }): RenderedLane {
   if (boardColumns > 0) return lane === 'flat' ? 'board-flat' : 'board'
   if (lane === 'conductor' && lineageAvailable) return 'conductor'
+  // Grouping by workspace is meaningless with fewer than two of them: the lane
+  // would be one bucket that reads as the flat list under a redundant header.
+  if (lane === 'workspace' && workspaces > 1) return 'workspace'
+  // Same dead-position rule for projects — one bucket is the flat list.
+  if (lane === 'project' && projects > 1) return 'project'
   if (lane === 'flat' && folders > 0) return 'flat'
   return 'tree'
 }
 
 /** The lanes that can render, the next one, and the header button that cycles them. */
-export function useLaneCycle({ lineageAvailable, boardLaneActive, folders, lane, setLanePersisted }: {
+export function useLaneCycle({ lineageAvailable, boardLaneActive, folders, workspaces, projects, lane, setLanePersisted }: {
   lineageAvailable: boolean
   boardLaneActive: boolean
   folders: ChatFolder[]
+  workspaces: number
+  projects: number
   lane: SidebarLane
   setLanePersisted: (next: SidebarLane) => void
 }) {
@@ -69,9 +78,11 @@ export function useLaneCycle({ lineageAvailable, boardLaneActive, folders, lane,
    *
    * `tree` always can. `conductor` needs at least one edge -- the crew log can be off,
    * and then no row will ever carry a parent, so the lane would be the flat list with
-   * a chevron nowhere. `flat` needs folders, which is the pre-existing rule. Offering
-   * a lane that renders identically to another is a dead position in the cycle, and the
-   * user has to press through it.
+   * a chevron nowhere. `flat` needs folders, which is the pre-existing rule.
+   * `workspace` needs more than one workspace, or it is one bucket under a redundant
+   * header -- the same dead-position rule the others follow. `project` follows it, on
+   * the project count. Offering a lane that renders identically to another is a dead
+   * position in the cycle, and the user has to press through it.
    */
   const availableLanes = useMemo<SidebarLane[]>(() => {
     const out: SidebarLane[] = ['tree']
@@ -81,8 +92,11 @@ export function useLaneCycle({ lineageAvailable, boardLaneActive, folders, lane,
     // different and stays offered: it has a real in-column meaning.
     if (lineageAvailable && !boardLaneActive) out.push('conductor')
     if (folders.length > 0) out.push('flat')
+    // Like conductor, gated off while a board preempts the lane choice.
+    if (workspaces > 1 && !boardLaneActive) out.push('workspace')
+    if (projects > 1 && !boardLaneActive) out.push('project')
     return out
-  }, [lineageAvailable, boardLaneActive, folders.length])
+  }, [lineageAvailable, boardLaneActive, folders.length, workspaces, projects])
 
   /** Where the next press goes. The button's copy is derived from THIS rather than
    *  from the current lane: the control's job is to say what it will do, and naming
@@ -107,6 +121,10 @@ export function useLaneCycle({ lineageAvailable, boardLaneActive, folders, lane,
    *  language's copy after a switch. */
   const laneSwitchLabel = nextLane === 'conductor'
     ? i18nT('pages.chatSidebar.switch_to_conductor_view_nested_by_creator')
+    : nextLane === 'workspace'
+      ? i18nT('pages.chatSidebar.switch_to_workspace_view_grouped_by_workspace')
+    : nextLane === 'project'
+      ? i18nT('pages.chatSidebar.switch_to_project_view_grouped_by_project')
     : nextLane === 'flat'
       ? (boardLaneActive
         ? i18nT('pages.chatSidebar.switch_to_flat_view_hide_folders_in_board_columns')
@@ -115,9 +133,9 @@ export function useLaneCycle({ lineageAvailable, boardLaneActive, folders, lane,
         ? i18nT('pages.chatSidebar.show_folders_in_board_columns')
         : i18nT('pages.chatSidebar.switch_to_folder_view'))
 
-  /** The single header button: tree -> conductor -> flat -> tree, skipping any lane
-   *  that cannot render. Named for what it does now; there is no segmented control,
-   *  because the sidebar's chrome stays Raycast-plain. */
+  /** The single header button: tree -> conductor -> flat -> workspace -> project ->
+   *  tree, skipping any lane that cannot render. Named for what it does now; there is
+   *  no segmented control, because the sidebar's chrome stays Raycast-plain. */
   const cycleLane = useCallback(() => {
     setLanePersisted(nextLane)
   }, [nextLane, setLanePersisted])
